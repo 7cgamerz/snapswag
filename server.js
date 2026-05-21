@@ -7,14 +7,18 @@ const fs = require('fs');
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Middlewares
-app.use(cors());
+// 🔥 FIXED CORS MIDDLEWARE (Allows Netlify connections without blocking)
+app.use(cors({
+    origin: '*',
+    methods: ['GET', 'POST'],
+    allowedHeaders: ['Content-Type']
+}));
 app.use(express.json());
 
-// 🌍 Vercel-compatible temporary directory for serverless environments
+// Vercel-compatible temporary directory for serverless environments
 const downloadDir = '/tmp'; 
 
-// Use standard global binary execution for cloud environments
+// Standard global binary execution for cloud environments
 const ytDlpPath = "yt-dlp";
 
 // Test route to verify server status
