@@ -11,49 +11,50 @@ const PORT = process.env.PORT || 5000;
 app.use(cors());
 app.use(express.json());
 
-// Serve static frontend files
-app.use(express.static(path.join(__dirname, '../frontend')));
+// 🌍 Vercel-compatible temporary directory for serverless environments
+const downloadDir = '/tmp'; 
 
-// Ensure downloads directory exists
-const downloadDir = path.join(__dirname, 'downloads');
-if (!fs.existsSync(downloadDir)) {
-    fs.mkdirSync(downloadDir);
-}
+// Use standard global binary execution for cloud environments
+const ytDlpPath = "yt-dlp";
 
-// Local path for executable tools
-const ytDlpPath = `"C:\\AUniversalTools\\yt-dlp.exe"`;
+// Test route to verify server status
+app.get('/', (req, res) => {
+    res.json({ status: "MegaDownloader API is fully operational on Vercel!" });
+});
 
-// 🔍 1. ENDPOINT: Fetch Metadata (Title, Thumbnail, Duration)
+// 🔍 1. ENDPOINT: Fetch Metadata Configuration
 app.post('/api/fetch-info', (req, res) => {
     const { videoUrl } = req.body;
-    if (!videoUrl) return res.status(400).json({ error: 'URL is required!' });
+    if (!videoUrl) return res.status(400).json({ error: 'URL field is required!' });
 
     const command = `${ytDlpPath} --no-warnings --dump-json "${videoUrl}"`;
 
     exec(command, (error, stdout, stderr) => {
         if (error) {
             console.error(stderr);
-            return res.status(500).json({ error: 'Could not fetch details. Please verify the URL or try another public link.' });
+            return res.status(500).json({ error: 'Could not fetch asset details. Link might be private or restricted.' });
         }
 
         try {
             const metadata = JSON.parse(stdout);
             res.json({
-                title: metadata.title || 'Social Media Post',
+                title: metadata.title || 'Social Media Asset',
                 thumbnail: metadata.thumbnail || (metadata.thumbnails && metadata.thumbnails[0]?.url) || 'https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7?w=500',
                 duration: metadata.duration_string || (metadata.duration ? `${metadata.duration}s` : 'Post'),
                 url: videoUrl
             });
         } catch (e) {
-            res.status(500).json({ error: 'Failed to parse metadata.' });
+            res.status(500).json({ error: 'Failed to parse metadata payload.' });
         }
     });
 });
 
-// 📥 2. ENDPOINT: Processing Media File Download
+// 📥 2. ENDPOINT: Stream Media Extraction Process
 app.post('/api/download', (req, res) => {
     const { videoUrl, format } = req.body;
     const timestamp = Date.now();
+    
+    // Storing files directly into the permitted serverless /tmp stream space
     const outputTemplate = path.join(downloadDir, `${timestamp}_%(title)s.%(ext)s`);
 
     let ytDlpCommand = '';
@@ -71,31 +72,25 @@ app.post('/api/download', (req, res) => {
         }
     }
 
-    console.log(`Executing command: ${ytDlpCommand}`);
-
     exec(ytDlpCommand, (error, stdout, stderr) => {
         const files = fs.readdirSync(downloadDir);
         const downloadedFile = files.find(file => file.startsWith(timestamp.toString()));
         
         if (!downloadedFile) {
-            console.error("System Error Details:", stderr || error);
-            return res.status(500).json({ error: 'This post is either private, restricted, or temporary blocked. Try a different public link.' });
+            console.error("Core Engine Logs:", stderr || error);
+            return res.status(500).json({ error: 'Asset extraction failed or timeout triggered.' });
         }
 
         const filePath = path.join(downloadDir, downloadedFile);
         
         res.download(filePath, downloadedFile, (err) => {
-            if (err) console.error('Delivery error:', err);
             try {
                 fs.unlinkSync(filePath);
-                console.log('Storage successfully cleared.');
             } catch (unlinkErr) {
-                console.error('Auto-cleanup failed:', unlinkErr);
+                console.error('Cleanup notice:', unlinkErr);
             }
         });
     });
 });
 
-app.listen(PORT, () => {
-    console.log(`Backend server successfully running on http://localhost:${PORT}`);
-});
+module.exports = app;
